@@ -1,0 +1,10 @@
+<resources>
+    <color name="bg">#FF0E1116</color>
+    <color name="panel">#FF1A1F27</color>
+    <color name="panel_focus">#FF2B3442</color>
+    <color name="accent">#FF4FC3F7</color>
+    <color name="select">#FFFFD54F</color>
+    <color name="text">#FFF2F4F7</color>
+    <color name="text_dim">#FFA9B2BF</color>
+    <color name="tile_offline">#FF3A3D42</color>
+</resources>

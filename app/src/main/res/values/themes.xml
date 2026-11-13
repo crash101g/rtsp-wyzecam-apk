@@ -1,0 +1,16 @@
+<resources>
+    <style name="Theme.WyzeTv" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:colorPrimary">@color/bg</item>
+        <item name="android:textColor">@color/text</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:alertDialogTheme">@style/Dialog.WyzeTv</item>
+    </style>
+    <style name="Dialog.WyzeTv" parent="android:Theme.Material.Dialog.Alert">
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:windowBackground">@drawable/dialog_bg</item>
+        <item name="android:textSize">18sp</item>
+    </style>
+</resources>
