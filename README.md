@@ -4,13 +4,14 @@ An Android TV / Google TV app based on [crash101g/wyzecam-rtsp](https://github.c
 It shows your Wyze cameras' RTSP streams in a live grid. Video goes straight from each camera to the TV
 over your home network, with no cloud and no Wyze account.
 
-**Install:** `WyzeCamRTSP-tv.apk`
+**Install:** download [`wyzecam-rtsp-tv-1.0.5.apk`](https://github.com/crash101g/rtsp-wyzecam-apk/releases/download/v1.0.5/wyzecam-rtsp-tv-1.0.5.apk)
+from the [latest release](https://github.com/crash101g/rtsp-wyzecam-apk/releases/latest).
 
 ## Install on the TV
 1. On the TV: Settings → System → About → click *Android TV OS build* 7 times (developer mode),
    then Settings → System → Developer options → turn on **USB debugging** (some TVs call it *ADB debugging*).
 2. From this PC: `adb connect <tv-ip>` (accept the prompt on the TV), then
-   `adb install -r WyzeCamRTSP-tv.apk`
+   `adb install -r wyzecam-rtsp-tv-1.0.5.apk`
    (Alternative: put the APK on a USB stick or use the "Send Files to TV" / Downloader apps.)
 
 ## First run
