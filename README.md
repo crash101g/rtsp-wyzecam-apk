@@ -35,6 +35,9 @@ You can also type everything with the remote under Settings.
 | Full screen | Hold OK / Menu | switch main/substream, sound on/off, rename, reconnect, test |
 | Lists | ◀ ▶ on a camera (Manage cameras) | move it up / down in the order |
 
+The blue selection border and the camera numbers only show while you use the remote. They hide
+5 seconds after the last key press, and the first arrow or OK press brings them back.
+
 ## How it works
 - Media3/ExoPlayer can't play `rtsps://`. A small local proxy (`RtspsProxy.kt`) makes the TLS connection to the
   camera on port 322, answers the camera's Digest login, and carries RTP over the same connection. It also

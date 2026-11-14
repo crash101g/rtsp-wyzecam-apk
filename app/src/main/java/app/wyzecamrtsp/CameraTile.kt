@@ -102,18 +102,30 @@ class CameraTile(ctx: Context, var cam: Cam, private val full: Boolean) : FrameL
 
     fun setIndex(i: Int) {
         number.text = "${i + 1}"
-        number.visibility = if (!full && Store.showNames) VISIBLE else GONE
+        updateChrome()
+    }
+
+    /**
+     * True while the user is moving around the grid with the remote: only then are the
+     * selection border and the 1–9 numbers shown, so they don't sit on top of the video.
+     */
+    var navigating = false
+        set(v) { field = v; updateChrome() }
+
+    private fun updateChrome() {
+        border.visibility = if (navigating || isActivated) VISIBLE else INVISIBLE
+        number.visibility = if (!full && Store.showNames && navigating) VISIBLE else GONE
     }
 
     fun refreshLabel() {
         val sub = if (fellBack) "  (substream)" else ""
         label.text = cam.name + sub
         label.visibility = if (Store.showNames || full) VISIBLE else GONE
-        number.visibility = if (!full && Store.showNames) VISIBLE else GONE
+        updateChrome()
     }
 
     /** Yellow "moving" border used by Rearrange. */
-    fun setMoving(on: Boolean) { isActivated = on; refreshDrawableState() }
+    fun setMoving(on: Boolean) { isActivated = on; refreshDrawableState(); updateChrome() }
 
     private fun setStatus(text: String?) {
         if (text == null) status.visibility = GONE
