@@ -2,12 +2,17 @@ package app.wyzecamrtsp
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.os.SystemClock
+import android.util.Log
+import java.io.File
 import java.net.Inet4Address
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.util.IdentityHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 
 /** Network helpers + the camera scan (a port of the desktop script's `scan`). */
 object Scanner {
@@ -55,7 +60,7 @@ object Scanner {
      * didn't answer stay in the list (marked offline) instead of vanishing.
      * Runs on the calling (background) thread; [progress] is called from that thread.
      */
-    fun scan(ctx: Context, cancel: AtomicBoolean, progress: (String) -> Unit): String {
+    fun scan(ctx: Context, cancel: AtomicBoolean, addNew: Boolean = true, progress: (String) -> Unit): String {
         val port = Store.port
         val (net, hosts) = hosts(ctx, Store.subnet)
             ?: return "Couldn't detect your network. Set the subnet under Settings > Advanced."
@@ -91,20 +96,22 @@ object Scanner {
         }
 
         // Merge into the saved list (on whatever thread; Store.save() notifies listeners on main).
-        synchronized(Store) {
-            val seen = mutableSetOf<String>()
-            for (ip in rtsp.keys.sortedBy { it.substringAfterLast('.').toInt() }) {
-                val r = probed[ip]!!
-                val c = Store.addCam(ip)
-                c.port = port; c.ok = r.ok; c.error = r.error; if (r.codec.isNotEmpty()) c.codec = r.codec
-                seen += ip
-            }
-            for (c in Store.cams) if (c.ip !in seen) { c.ok = false; c.error = "not found in the last scan" }
-            Store.save()
+        val arp = arpTable()
+        val found = rtsp.keys.sortedBy { it.substringAfterLast('.').toInt() }.map { ip ->
+            val r = probed[ip]!!
+            Found(ip, r.ok, r.error, r.codec, r.key, arp[ip] ?: "")
         }
+        val moves = synchronized(Store) {
+            merge(Store.cams, found, port, addNew).also { Store.save() }
+        }
+        lastMoved = moves.size
         val good = probed.values.count { it.ok }
         val bad = probed.filterValues { !it.ok }
         val sb = StringBuilder("Found ${rtsp.size} camera(s); $good working.")
+        if (moves.isNotEmpty()) {
+            sb.append("\n\nNew IP address (name and settings kept):")
+            moves.forEach { sb.append("\n • $it") }
+        }
         if (bad.isNotEmpty()) {
             sb.append("\n\nProblems:")
             bad.forEach { (ip, r) -> sb.append("\n • $ip: ${r.error}") }
@@ -112,5 +119,99 @@ object Scanner {
                 sb.append("\n\nThe username/password must match the RTSP login set in the Wyze app.")
         }
         return sb.toString()
+    }
+
+    /** How many saved cameras the last scan found at a new IP address. */
+    @Volatile var lastMoved = 0
+        private set
+
+    /** One camera that answered a scan. [key]/[mac] are empty when unknown. */
+    data class Found(val ip: String, val ok: Boolean, val error: String = "", val codec: String = "",
+                     val key: String = "", val mac: String = "")
+
+    /**
+     * Merges scan results into [cams] (in place) and returns "Name: old IP → new IP" for each
+     * camera that moved. A camera is recognised by its MAC or TLS key first, so a new IP keeps its
+     * name, order, hidden state and stream choice, even when two cameras swap addresses. Cameras
+     * not recognised that way fall back to matching by IP (e.g. ones saved before keys were
+     * recorded); unmatched ones are added (if [addNew]), and saved ones not found are marked offline.
+     */
+    fun merge(cams: MutableList<Cam>, found: List<Found>, port: Int, addNew: Boolean = true): List<String> {
+        val match = IdentityHashMap<Cam, Found>()
+        val taken = mutableSetOf<String>()      // found IPs already given to a saved camera
+        // 1. Same camera by identity, wherever it is now.
+        for (f in found) {
+            val c = cams.firstOrNull { it !in match && sameDevice(it, f) } ?: continue
+            match[c] = f; taken += f.ip
+        }
+        // 2. Same IP, unless the MACs prove it's a different device. (A different TLS key alone
+        //    isn't proof: the camera may have made a new certificate, e.g. after a firmware reset.)
+        for (f in found) {
+            if (f.ip in taken) continue
+            val c = cams.firstOrNull { it !in match && it.ip == f.ip &&
+                !(it.mac.isNotEmpty() && f.mac.isNotEmpty() && !it.mac.equals(f.mac, true)) } ?: continue
+            match[c] = f; taken += f.ip
+        }
+        val moves = mutableListOf<String>()
+        for ((c, f) in match) {
+            if (c.ip != f.ip) moves += "${c.name}: ${c.ip} → ${f.ip}"
+            c.ip = f.ip; c.port = port; c.ok = f.ok; c.error = f.error
+            if (f.codec.isNotEmpty()) c.codec = f.codec
+            if (f.key.isNotEmpty()) c.key = f.key
+            if (f.mac.isNotEmpty()) c.mac = f.mac
+        }
+        for (c in cams) if (c !in match) { c.ok = false; c.error = "not found in the last scan" }
+        // 3. Cameras seen for the first time.
+        if (addNew) for (f in found) if (f.ip !in taken) cams += Cam(name = "Camera ${f.ip.substringAfterLast('.')}", ip = f.ip,
+            port = port, ok = f.ok, error = f.error, codec = f.codec, key = f.key, mac = f.mac)
+        return moves
+    }
+
+    private fun sameDevice(c: Cam, f: Found) = when {
+        c.mac.isNotEmpty() && f.mac.isNotEmpty() -> c.mac.equals(f.mac, true)
+        else -> c.key.isNotEmpty() && c.key == f.key
+    }
+
+    /**
+     * IP → MAC from the kernel's ARP table. Android 10+ blocks this for apps (it's empty there),
+     * so the TLS key is what usually identifies a camera; older Android TVs also get the MAC.
+     */
+    fun arpTable(): Map<String, String> = runCatching {
+        File("/proc/net/arp").readLines().drop(1).mapNotNull { line ->
+            val p = line.trim().split(Regex("""\s+"""))
+            if (p.size >= 4 && p[3].count { it == ':' } == 5 && p[3] != "00:00:00:00:00:00") p[0] to p[3].lowercase() else null
+        }.toMap()
+    }.getOrDefault(emptyMap())
+}
+
+/**
+ * Finds cameras that changed IP address on its own: when a saved camera stops answering at its
+ * IP (or a different camera answers there), a quiet background scan moves it to its new address,
+ * recognised by its TLS key or MAC. The tile's next retry then connects there. It only updates
+ * saved cameras and never adds new ones. Rate-limited: at most every 3 minutes, backing off to
+ * hourly while a camera stays missing (e.g. it's unplugged).
+ */
+object Relocator {
+    private const val MIN_GAP = 3 * 60_000L
+    private const val MAX_GAP = 60 * 60_000L
+    private var running = false
+    private var gap = MIN_GAP
+    private var lastRun = 0L
+
+    @Synchronized
+    fun request(ctx: Context, why: String) {
+        val now = SystemClock.elapsedRealtime()
+        if (running || !Store.hasLogin || (lastRun != 0L && now - lastRun < gap)) return
+        running = true; lastRun = now
+        val app = ctx.applicationContext
+        thread(name = "relocate", isDaemon = true) {
+            val msg = runCatching { Scanner.scan(app, AtomicBoolean(false), addNew = false) {} }
+                .getOrElse { "failed: ${it.message}" }
+            Log.i("Relocator", "background scan ($why): $msg")
+            synchronized(this) {
+                gap = if (Scanner.lastMoved > 0) MIN_GAP else (gap * 2).coerceAtMost(MAX_GAP)
+                running = false
+            }
+        }
     }
 }

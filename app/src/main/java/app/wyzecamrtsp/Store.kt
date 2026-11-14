@@ -19,7 +19,11 @@ class App : Application() {
     }
 }
 
-/** One camera. [stream] null = use the grid / full-screen default. */
+/**
+ * One camera. [stream] null = use the grid / full-screen default.
+ * [key] (TLS public-key fingerprint) and [mac] identify the camera itself, so it keeps its name and
+ * place when DHCP gives it a new IP; empty = not learned yet.
+ */
 data class Cam(
     var name: String,
     var ip: String,
@@ -29,12 +33,15 @@ data class Cam(
     var ok: Boolean = true,
     var error: String = "",
     var codec: String = "",
+    var key: String = "",
+    var mac: String = "",
 ) {
     val lastOctet: String get() = ip.substringAfterLast('.')
 
     fun toJson() = JSONObject().apply {
         put("name", name); put("ip", ip); put("port", port); put("enabled", enabled)
         put("stream", stream ?: ""); put("ok", ok); put("error", error); put("codec", codec)
+        put("key", key); put("mac", mac)
     }
 
     companion object {
@@ -47,6 +54,8 @@ data class Cam(
             ok = o.optBoolean("ok", true),
             error = o.optString("error"),
             codec = o.optString("codec"),
+            key = o.optString("key"),
+            mac = o.optString("mac"),
         )
     }
 }

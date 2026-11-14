@@ -157,16 +157,18 @@ class CameraTile(ctx: Context, var cam: Cam, private val full: Boolean) : FrameL
         val ip = cam.ip; val port = cam.port; val user = Store.user; val pass = Store.pass
         val stream = activeStream
         val audio = full && Store.fullAudio
+        val key = cam.key
         val gen = ++connectGen
         // Network work (local socket, checking the stream with the camera) stays off the UI thread.
         thread(isDaemon = true) {
-            val px = runCatching { RtspsProxy(ip, port, user, pass, keepAudio = audio) }.getOrNull()
+            val px = runCatching { RtspsProxy(ip, port, user, pass, keepAudio = audio, expectKey = key) }.getOrNull()
             val err = px?.prepare(stream)
             ui.post {
                 if (!running || gen != connectGen || px == null) {
                     px?.close(); if (running && gen == connectGen) scheduleRetry("proxy failed"); return@post
                 }
                 if (err != null) { px.close(); scheduleRetry(err); return@post }
+                learnKey(px.seenKey)
                 proxy = px
                 startPlayer(px.url(stream))
             }
@@ -192,6 +194,7 @@ class CameraTile(ctx: Context, var cam: Cam, private val full: Boolean) : FrameL
                 gotFrame = true; failures = 0; retryDelay = 2000L
                 setStatus(null)
                 if (!cam.ok) { cam.ok = true; cam.error = "" }
+                proxy?.let { learnKey(it.seenKey) }
             }
             override fun onPlayerError(error: PlaybackException) {
                 val px = proxy
@@ -232,11 +235,21 @@ class CameraTile(ctx: Context, var cam: Cam, private val full: Boolean) : FrameL
         return msg?.take(90)
     }
 
+    /** Remember the camera's TLS key the first time it's seen (cameras saved before keys existed). */
+    private fun learnKey(seen: String) {
+        if (seen.isNotEmpty() && cam.key.isEmpty() && Store.cams.none { it !== cam && it.key == seen }) {
+            cam.key = seen; Store.save()
+        }
+    }
+
     private fun scheduleRetry(why: String) {
         if (!running) return
         release()
         gotFrame = false
         failures++
+        // Not at its address any more? It may have a new IP from DHCP: look for it in the background.
+        if (why == WRONG_CAMERA || failures >= 2 && LOST.any { why.contains(it, ignoreCase = true) })
+            Relocator.request(context, "${cam.name} at ${cam.ip}: $why")
         // Like the desktop script: a main stream that keeps dropping falls back to the substream.
         if (full && !fellBack && activeStream == MAIN && failures >= 3 && !why.startsWith("login")) {
             fellBack = true
@@ -294,5 +307,7 @@ class CameraTile(ctx: Context, var cam: Cam, private val full: Boolean) : FrameL
     companion object {
         const val STALL_MS = 8_000L
         const val FIRST_FRAME_MS = 25_000L
+        /** Errors meaning nothing usable answered at the camera's IP. */
+        private val LOST = listOf("not responding", "refused the connection", "timed out", "unreachable", "no route")
     }
 }

@@ -21,7 +21,8 @@ import kotlin.concurrent.thread
  *  - cleans up the camera's SDP so Media3 accepts it (see [Sdp]); if the camera leaves the
  *    H.264 SPS/PPS out of the SDP, [prepare] catches them from the live stream first,
  *  - sends RTSP TEARDOWN when the player goes away, so the camera frees the session
- *    (Wyze cams refuse new viewers once dead sessions pile up).
+ *    (Wyze cams refuse new viewers once dead sessions pile up),
+ *  - if [expectKey] is set, refuses to talk to any other camera than that one (see [Tls.connect]).
  */
 class RtspsProxy(
     private val host: String,
@@ -29,6 +30,7 @@ class RtspsProxy(
     private val user: String,
     private val pass: String,
     private val keepAudio: Boolean = false,
+    private val expectKey: String = "",
 ) : Closeable {
     private val server = ServerSocket(0, 4, InetAddress.getByName("127.0.0.1"))
     private val auth = RtspAuth(user, pass)
@@ -40,6 +42,9 @@ class RtspsProxy(
         private set
     @Volatile var lastError: String = ""
         private set
+    /** The TLS key of the camera at [host], once connected (see [Tls.key]). */
+    @Volatile var seenKey: String = ""
+        private set
 
     private val localBase = "rtsp://127.0.0.1:${server.localPort}"
     private val remoteBase = "rtsps://$host:$port"
@@ -47,7 +52,8 @@ class RtspsProxy(
 
     fun url(path: String) = "$localBase/$path"
 
-    private fun key(path: String) = "$host:$port/$path"
+    /** Cache key: per camera when its identity is known, else per address. */
+    private fun key(path: String) = "${expectKey.ifEmpty { host }}:$port/$path"
 
     /**
      * Run once before starting the player (on a background thread). Checks the stream with the
@@ -61,7 +67,8 @@ class RtspsProxy(
         if (key in ready) return null
         val uri = "$remoteBase/$path"
         return try {
-            Tls.connect(host, port, 8000).use { s ->
+            Tls.connect(host, port, 8000, expectKey).use { s ->
+                seenKey = Tls.key(s)
                 val c = Conn(s, RtspAuth(user, pass))
                 val d = c.request("DESCRIBE", uri, "Accept" to "application/sdp")
                 when (d.status) {
@@ -163,7 +170,8 @@ class RtspsProxy(
         fun start() = thread(name = "proxy-$host", isDaemon = true) {
             try {
                 client.tcpNoDelay = true
-                val up = Tls.connect(host, port, 8000)
+                val up = Tls.connect(host, port, 8000, expectKey)
+                seenKey = Tls.key(up)
                 up.soTimeout = 0       // the player has its own timeouts and keep-alives
                 upstream = up
                 thread(name = "proxy-down-$host", isDaemon = true) { downstream(up) }
@@ -415,7 +423,7 @@ class RtspsProxy(
             else -> base.trimEnd('/') + "/" + ctl.trimStart('/')
         }
 
-        /** Streams already checked by [prepare] ("host:port/path"). */
+        /** Streams already checked by [prepare] ("key-or-host:port/path"). */
         private val ready = ConcurrentHashMap.newKeySet<String>()
         /** SPS/PPS caught from the stream, for cameras whose SDP leaves them out. */
         private val spropCache = ConcurrentHashMap<String, H264Params>()

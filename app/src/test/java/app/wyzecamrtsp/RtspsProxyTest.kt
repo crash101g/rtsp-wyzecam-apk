@@ -3,6 +3,7 @@ package app.wyzecamrtsp
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import java.net.Socket
@@ -136,5 +137,25 @@ class RtspsProxyTest {
         val bad = RtspProbe.describe("localhost", cam.localPort, MAIN, user, "wrong")
         assertTrue(!bad.ok && bad.error.startsWith("login rejected"))
         assertTrue(RtspProbe.options("localhost", cam.localPort) != null)
+    }
+
+    @Test fun cameraIdentityIsItsTlsKey() {
+        val key = RtspProbe.describe("localhost", cam.localPort, MAIN, user, pass).key
+        assertEquals(64, key.length)                    // hex SHA-256
+        assertEquals(key, RtspProbe.describe("localhost", cam.localPort, MAIN, user, "wrong").key)
+        Tls.connect("localhost", cam.localPort, 3000, expectKey = key).close()
+        try {
+            Tls.connect("localhost", cam.localPort, 3000, expectKey = "0".repeat(64)).close()
+            fail("connected to the wrong camera")
+        } catch (e: WrongCameraException) {}
+
+        // The proxy won't stream from a camera other than the expected one.
+        RtspsProxy("localhost", cam.localPort, user, pass, expectKey = "0".repeat(64)).use {
+            assertEquals(WRONG_CAMERA, it.prepare(MAIN))
+        }
+        RtspsProxy("localhost", cam.localPort, user, pass, expectKey = key).use {
+            assertTrue(it.prepare(MAIN) != WRONG_CAMERA)   // (this fake cam's video has no SPS/PPS; that's fine here)
+            assertEquals(key, it.seenKey)
+        }
     }
 }
