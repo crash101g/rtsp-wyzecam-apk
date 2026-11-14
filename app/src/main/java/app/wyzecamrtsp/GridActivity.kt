@@ -3,6 +3,7 @@ package app.wyzecamrtsp
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -22,9 +23,12 @@ import kotlin.math.sqrt
 /** Lays tiles out in an even grid: columns = ceil(sqrt(n)), like the desktop script. */
 class CamGrid(ctx: Context) : ViewGroup(ctx) {
     var cols = 1; private set
-    private val gap = ctx.dp(3)
+    private val gap = 0   // borderless: tiles touch
     /** Display order; lets tiles be rearranged without detaching (and so restarting) them. */
     var order: List<View> = emptyList()
+
+    // The gaps between tiles show this: black, so they blend with the video's black letterbox bars.
+    init { setBackgroundColor(Color.BLACK) }
 
     override fun onMeasure(w: Int, h: Int) {
         val width = MeasureSpec.getSize(w); val height = MeasureSpec.getSize(h)

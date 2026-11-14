@@ -70,6 +70,11 @@ class SettingsActivity : Activity() {
                 Store.fullStream = if (it == 0) MAIN else SUB; Store.save()
             }
         }
+        row("Grid video size", if (Store.gridFill) "Zoom to fill — no black bars, edges cropped" else "Fit — whole picture, may show black bars") {
+            choose("Grid video size", listOf("Fit (whole picture, may show black bars)", "Zoom to fill (no black bars, edges cropped)"), if (Store.gridFill) 1 else 0) {
+                Store.gridFill = it == 1; Store.save()
+            }
+        }
         row("Camera names on tiles", if (Store.showNames) "On" else "Off") {
             Store.showNames = !Store.showNames; Store.save()
         }

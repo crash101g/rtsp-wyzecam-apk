@@ -9,6 +9,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -36,11 +37,14 @@ import kotlin.concurrent.thread
 @SuppressLint("ViewConstructor")
 class CameraTile(ctx: Context, var cam: Cam, private val full: Boolean) : FrameLayout(ctx) {
     private val ui = Handler(Looper.getMainLooper())
-    private val playerView = PlayerView(ctx).apply {
+    /** Grid tiles can zoom to fill (no black bars, edges cropped); full screen always shows the whole picture. */
+    private val zoom = !full && Store.gridFill
+    private val playerView = (if (zoom) LayoutInflater.from(ctx).inflate(R.layout.player_texture, this, false) as PlayerView
+                              else PlayerView(ctx)).apply {
         useController = false
         isFocusable = false
         descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+        resizeMode = if (zoom) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
         setShutterBackgroundColor(Color.BLACK)
         setKeepContentOnPlayerReset(true)
     }

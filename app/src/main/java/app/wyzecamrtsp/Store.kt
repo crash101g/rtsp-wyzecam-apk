@@ -77,6 +77,7 @@ object Store {
     var gridStream = SUB            // lighter substream is plenty for a grid
     var fullStream = MAIN
     var showNames = true
+    var gridFill = false            // true = zoom grid video to fill each tile (crops the edges)
     var resyncMin = 10              // 0 = off
     var fullAudio = false
     var hintsShown = 0
@@ -98,6 +99,7 @@ object Store {
         gridStream = prefs.getString("gridStream", SUB)!!
         fullStream = prefs.getString("fullStream", MAIN)!!
         showNames = prefs.getBoolean("showNames", true)
+        gridFill = prefs.getBoolean("gridFill", false)
         resyncMin = prefs.getInt("resyncMin", 10)
         fullAudio = prefs.getBoolean("fullAudio", false)
         hintsShown = prefs.getInt("hintsShown", 0)
@@ -115,6 +117,7 @@ object Store {
             .putString("user", user).putString("pass", pass).putInt("port", port)
             .putString("subnet", subnet).putString("gridStream", gridStream)
             .putString("fullStream", fullStream).putBoolean("showNames", showNames)
+            .putBoolean("gridFill", gridFill)
             .putInt("resyncMin", resyncMin).putBoolean("fullAudio", fullAudio)
             .putInt("hintsShown", hintsShown)
             .putString("cams", a.toString())
