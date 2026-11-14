@@ -8,8 +8,8 @@ over your home network, with no cloud and no Wyze account.
 (always the newest version; release notes are on the [latest release](https://github.com/crash101g/rtsp-wyzecam-apk/releases/latest) page).
 
 ## Tested devices
-- Walmart onn 4K Pro Streaming Device Gen2 (Google TV with Gemini, 32GB storage, 3GB RAM)
-- TCL 40Q3K (Google TV)
+- Walmart onn 4K Pro Streaming Device Gen2 (Google TV with Gemini, 32GB storage, 3GB RAM): tested with v1.0.6, 6 cameras
+- TCL 40Q3K (Google TV): tested with v1.0.6, 6 cameras
 
 ## Install on the TV
 1. On the TV: Settings → System → About → click *Android TV OS build* 7 times (developer mode),
