@@ -18,6 +18,13 @@ over your home network, with no cloud and no Wyze account.
    `adb install -r wyzecam-rtsp-tv.apk`
    (Alternative: put the APK on a USB stick or use the "Send Files to TV" / Downloader apps.)
 
+**Install or update with a script** (needs `adb` and `curl`; downloads the latest release APK and installs it on
+every TV you list):
+```
+curl -fsSLO https://raw.githubusercontent.com/crash101g/rtsp-wyzecam-apk/main/install.sh
+bash install.sh 192.168.1.50 192.168.1.51
+```
+
 ## First run
 Turn on RTSP for each camera in the Wyze app (camera → Settings → Advanced Settings → RTSP) and set a
 username and password. Use the same login on every camera. Then on the TV choose **Set up from your phone**.
