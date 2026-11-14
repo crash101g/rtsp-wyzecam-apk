@@ -4,13 +4,14 @@ An Android TV / Google TV app based on [crash101g/wyzecam-rtsp](https://github.c
 It shows your Wyze cameras' RTSP streams in a live grid. Video goes straight from each camera to the TV
 over your home network, with no cloud and no Wyze account.
 
-**Install:** download the `.apk` from the [latest release](https://github.com/crash101g/rtsp-wyzecam-apk/releases/latest).
+**Install:** [download `wyzecam-rtsp-tv.apk`](https://github.com/crash101g/rtsp-wyzecam-apk/releases/latest/download/wyzecam-rtsp-tv.apk)
+(always the newest version; release notes are on the [latest release](https://github.com/crash101g/rtsp-wyzecam-apk/releases/latest) page).
 
 ## Install on the TV
 1. On the TV: Settings → System → About → click *Android TV OS build* 7 times (developer mode),
    then Settings → System → Developer options → turn on **USB debugging** (some TVs call it *ADB debugging*).
 2. From this PC: `adb connect <tv-ip>` (accept the prompt on the TV), then
-   `adb install -r wyzecam-rtsp-tv-<version>.apk` (the file you downloaded)
+   `adb install -r wyzecam-rtsp-tv.apk`
    (Alternative: put the APK on a USB stick or use the "Send Files to TV" / Downloader apps.)
 
 ## First run
@@ -65,3 +66,7 @@ The blue selection border and the camera numbers only show while you use the rem
 `./gradlew assembleRelease` → `app/build/outputs/apk/release/app-release.apk`.
 Signed with `release.keystore` (password in `keystore.properties`). Keep both files: Android only installs
 updates signed with the same key. `./gradlew testDebugUnitTest` runs the proxy test against a fake RTSPS camera.
+
+**Releasing:** attach the APK to each GitHub release twice: as `wyzecam-rtsp-tv-<version>.apk`, and as
+`wyzecam-rtsp-tv.apk`. The README's download link (`/releases/latest/download/wyzecam-rtsp-tv.apk`) only works
+if the latest release has the unversioned file.
