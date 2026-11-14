@@ -1,8 +1,10 @@
 package app.wyzecamrtsp
 
+import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import org.json.JSONArray
@@ -16,6 +18,18 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         Store.init(this)
+        // When no screen of the app is visible any more (exit, Home, TV input switch or sleep), stop
+        // background camera scans too. Streams are already stopped by each screen's onPause.
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            private var started = 0
+            override fun onActivityStarted(a: Activity) { started++ }
+            override fun onActivityStopped(a: Activity) { if (--started <= 0) { started = 0; Scanner.cancelAll() } }
+            override fun onActivityCreated(a: Activity, b: Bundle?) {}
+            override fun onActivityResumed(a: Activity) {}
+            override fun onActivityPaused(a: Activity) {}
+            override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
+            override fun onActivityDestroyed(a: Activity) {}
+        })
     }
 }
 

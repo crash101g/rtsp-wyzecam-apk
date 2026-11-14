@@ -90,6 +90,7 @@ class RtspsProxy(
                 val base = d.header("Content-Base") ?: d.header("Content-Location") ?: uri
                 var sid: String? = null
                 for ((i, tr) in Sdp.tracks(sdp).withIndex()) {
+                    if (closed) break
                     val h = mutableListOf("Transport" to "RTP/AVP/TCP;unicast;interleaved=${2 * i}-${2 * i + 1}")
                     sid?.let { h += "Session" to it }
                     val su = c.request("SETUP", trackUri(base, tr.control), *h.toTypedArray())
@@ -101,13 +102,14 @@ class RtspsProxy(
                     sid = sid ?: su.header("Session")?.substringBefore(';')?.trim()
                         ?: return "camera sent no session id"
                 }
-                if (sid == null) return "camera sent no session id"
+                if (sid == null) return if (closed) "closed" else "camera sent no session id"
+                if (closed) { runCatching { c.send("TEARDOWN", base, "Session" to sid) }; return "closed" }
                 val p = c.request("PLAY", base, "Session" to sid, "Range" to "npt=0.000-")
                 if (p.status != 200) {
                     runCatching { c.send("TEARDOWN", base, "Session" to sid) }
                     return "camera refused PLAY (${p.start.removePrefix("RTSP/1.0 ")})"
                 }
-                val (params, seen) = c.catchH264(t.payloadType, 15_000)
+                val (params, seen) = c.catchH264(t.payloadType, 15_000) { closed }
                 runCatching { c.send("TEARDOWN", base, "Session" to sid) }
                 Log.i(TAG, "$host/$path stream check: $seen")
                 if (params == null) return "no SPS/PPS from camera ($seen)"
@@ -142,7 +144,7 @@ class RtspsProxy(
         val left = sessions.toList()
         if (left.isNotEmpty()) thread(isDaemon = true) {
             Thread.sleep(3000)
-            left.forEach { it.shutdown() }
+            left.forEach { it.teardownAndClose() }
         }
     }
 
@@ -325,11 +327,12 @@ class RtspsProxy(
         }
 
         /** If the player vanished without a TEARDOWN, send one ourselves so the camera frees the slot. */
-        private fun teardownAndClose() {
+        fun teardownAndClose() {
             val sid = sessionId
             val uri = lastUri
             val up = upstream
-            if (!tornDown && sid != null && uri != null && up != null && !up.isClosed) {
+            synchronized(this) { if (done || tornDown) { shutdown(); return }; tornDown = true }
+            if (sid != null && uri != null && up != null && !up.isClosed) {
                 runCatching {
                     val base = uri.substringBeforeLast('/', uri).let { if (it.count { c -> c == '/' } >= 3) it else uri }
                     val req = RtspMsg.Text("TEARDOWN $base RTSP/1.0",
@@ -386,13 +389,14 @@ class RtspsProxy(
          * payload type rather than interleaved channel (some cameras don't use the channel they
          * announced). Returns the parameters (or null) and a summary of what was seen.
          */
-        fun catchH264(payloadType: Int, ms: Long): Pair<H264Params?, String> {
+        fun catchH264(payloadType: Int, ms: Long, stop: () -> Boolean = { false }): Pair<H264Params?, String> {
             val end = System.currentTimeMillis() + ms
             val nals = RtpH264(payloadType)   // audio is SET UP too, so skip its packets
             val channels = sortedSetOf<Int>()
             var frames = 0
             sock.soTimeout = 3000
             while (System.currentTimeMillis() < end) {
+                if (stop()) return null to "stopped"
                 val m = try { RtspMsg.read(input) } catch (e: SocketTimeoutException) { continue }
                     ?: return null to "camera closed the stream (${nals.summary})"
                 if (m !is RtspMsg.Data) continue

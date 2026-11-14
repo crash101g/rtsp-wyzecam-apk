@@ -16,6 +16,11 @@ import kotlin.concurrent.thread
 
 /** Network helpers + the camera scan (a port of the desktop script's `scan`). */
 object Scanner {
+    /** Cancel flags of the scans running now, so leaving the app can stop them all. */
+    private val running = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<AtomicBoolean, Boolean>())
+
+    /** Stops every running scan (the app left the screen): no camera connections in the background. */
+    fun cancelAll() = running.forEach { it.set(true) }
 
     /** This device's IPv4 address and prefix length on the active network, e.g. ("192.168.1.20", 24). */
     fun localAddress(ctx: Context): Pair<String, Int>? {
@@ -61,6 +66,11 @@ object Scanner {
      * Runs on the calling (background) thread; [progress] is called from that thread.
      */
     fun scan(ctx: Context, cancel: AtomicBoolean, addNew: Boolean = true, progress: (String) -> Unit): String {
+        running += cancel
+        try { return scanNow(ctx, cancel, addNew, progress) } finally { running -= cancel }
+    }
+
+    private fun scanNow(ctx: Context, cancel: AtomicBoolean, addNew: Boolean, progress: (String) -> Unit): String {
         val port = Store.port
         val (net, hosts) = hosts(ctx, Store.subnet)
             ?: return "Couldn't detect your network. Set the subnet under Settings > Advanced."
@@ -86,14 +96,19 @@ object Scanner {
         progress("Found ${rtsp.size} camera(s). Checking each with your login…")
         val pool3 = Executors.newFixedThreadPool(8)
         val probed = try {
-            rtsp.keys.map { h -> h to pool3.submit<ProbeResult> { RtspProbe.describe(h, port, MAIN, Store.user, Store.pass) } }
-                .associate { (h, f) -> h to f.get(30, TimeUnit.SECONDS) }.toMutableMap()
+            rtsp.keys.map { h -> h to pool3.submit<ProbeResult?> { if (cancel.get()) null else RtspProbe.describe(h, port, MAIN, Store.user, Store.pass) } }
+                .mapNotNull { (h, f) -> f.get(30, TimeUnit.SECONDS)?.let { h to it } }.toMap().toMutableMap()
         } finally { pool3.shutdown() }
+        if (cancel.get()) return "Scan cancelled."
         val failed = probed.filterValues { !it.ok }.keys
         if (failed.isNotEmpty() && !cancel.get()) {
             progress("Retrying ${failed.size} camera(s) one at a time…")
-            for (h in failed) probed[h] = RtspProbe.describe(h, port, MAIN, Store.user, Store.pass, 15000)
+            for (h in failed) {
+                if (cancel.get()) return "Scan cancelled."
+                probed[h] = RtspProbe.describe(h, port, MAIN, Store.user, Store.pass, 15000)
+            }
         }
+        if (cancel.get()) return "Scan cancelled."
 
         // Merge into the saved list (on whatever thread; Store.save() notifies listeners on main).
         val arp = arpTable()
