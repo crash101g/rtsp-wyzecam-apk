@@ -12,11 +12,22 @@ class H264Params(val sps: ByteArray, val pps: ByteArray) {
     companion object {
         private fun b64(b: ByteArray) = Base64.getEncoder().encodeToString(b)
 
+        /** Standard or URL-safe base64, padding optional. */
+        private fun decode(s: String): ByteArray =
+            if (s.contains('-') || s.contains('_')) Base64.getUrlDecoder().decode(s) else Base64.getDecoder().decode(s)
+
+        /** Some cameras base64-encode the Annex-B start code too (00 00 00 01 67 …). */
+        private fun stripStartCode(b: ByteArray): ByteArray {
+            var i = 0
+            while (i < b.size - 1 && b[i].toInt() == 0) i++
+            return if (i >= 2 && b[i].toInt() == 1) b.copyOfRange(i + 1, b.size) else b
+        }
+
         /** Parses a sprop-parameter-sets value; null unless it holds a usable SPS and PPS. */
         fun fromSprop(value: String?): H264Params? {
             if (value.isNullOrBlank()) return null
-            val nals = value.split(',').mapNotNull { runCatching { Base64.getDecoder().decode(it.trim()) }.getOrNull() }
-                .filter { it.isNotEmpty() }
+            val nals = value.split(',').mapNotNull { runCatching { decode(it.trim()) }.getOrNull() }
+                .map { stripStartCode(it) }.filter { it.isNotEmpty() }
             val sps = nals.firstOrNull { (it[0].toInt() and 0x1F) == 7 } ?: return null
             val pps = nals.firstOrNull { (it[0].toInt() and 0x1F) == 8 } ?: return null
             return H264Params(sps, pps)
@@ -134,7 +145,7 @@ object Sdp {
         val out = LinkedHashMap<String, String>()
         line.substringAfter(' ', "").split(';').forEach {
             val p = it.trim(); val i = p.indexOf('=')
-            if (i > 0) out.putIfAbsent(p.substring(0, i).trim(), p.substring(i + 1).trim())
+            if (i > 0) out.putIfAbsent(p.substring(0, i).trim().lowercase(), p.substring(i + 1).trim())
         }
         return out
     }

@@ -35,6 +35,9 @@ You can also type everything with the remote under Settings.
 | Full screen | Hold OK / Menu | switch main/substream, sound on/off, rename, reconnect, test |
 | Lists | ◀ ▶ on a camera (Manage cameras) | move it up / down in the order |
 
+The blue selection border and the camera numbers only show while you use the remote. They hide
+5 seconds after the last key press, and the first arrow or OK press brings them back.
+
 ## How it works
 - Media3/ExoPlayer can't play `rtsps://`. A small local proxy (`RtspsProxy.kt`) makes the TLS connection to the
   camera on port 322, answers the camera's Digest login, and carries RTP over the same connection. It also
@@ -49,6 +52,12 @@ You can also type everything with the remote under Settings.
   the main stream keeps failing.
 - Each tile reconnects on its own. A tile whose video freezes for 8 s is restarted, and every camera
   reconnects every 10 minutes (staggered) to stay live. A dark grey tile = no video right now; it keeps retrying.
+- Cameras are recognised by their own identity, not their IP address, so a camera that gets a new IP from
+  your router keeps its name, place and settings. Android 10+ doesn't let apps read MAC addresses, so the
+  identity is the fingerprint of the camera's TLS key (each Wyze cam makes its own). The MAC is used too on
+  older TVs that allow it. When a camera stops answering at its IP, or a different camera answers there, the
+  app quietly rescans in the background (at most every 3 minutes, backing off to hourly) and moves it to its
+  new address. It never streams one camera under another camera's name.
 - The login is stored in the app's private storage on the TV. The phone setup page only runs while that
   screen is open and needs the random key from the QR code.
 

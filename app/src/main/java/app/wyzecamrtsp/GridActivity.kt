@@ -69,6 +69,12 @@ class GridActivity : Activity() {
     private var moving: CameraTile? = null
     private var lastBack = 0L
     private var autoScanned = false
+    /** Selection border + camera numbers showing (see [CameraTile.navigating]). */
+    private var navigating = false
+    private val endNavigating = Runnable {
+        // Keep them while rearranging or in the menu bar; otherwise fade out after idle time.
+        if (moving != null || toolbarScroll.visibility == View.VISIBLE) keepNavigating() else setNavigating(false)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -150,6 +156,7 @@ class GridActivity : Activity() {
         val n = cams.size
         cams.forEachIndexed { i, cam ->
             val t = CameraTile(this, cam, full = false)
+            t.navigating = navigating
             t.setIndex(i)
             t.isClickable = true
             t.isLongClickable = true
@@ -339,6 +346,18 @@ class GridActivity : Activity() {
         if (refocus) tiles.getOrNull(focusIndex)?.requestFocus()
     }
 
+    private fun setNavigating(on: Boolean) {
+        navigating = on
+        tiles.forEach { it.navigating = on }
+    }
+
+    /** Show the selection and restart the countdown to hiding it. */
+    private fun keepNavigating() {
+        if (!navigating) setNavigating(true)
+        ui.removeCallbacks(endNavigating)
+        ui.postDelayed(endNavigating, NAV_IDLE_MS)
+    }
+
     private fun showHint(msg: String, ms: Long) {
         hint.text = msg
         hint.visibility = View.VISIBLE
@@ -353,6 +372,12 @@ class GridActivity : Activity() {
         val k = e.keyCode
         val focused = currentFocus
         val inToolbar = toolbarScroll.visibility == View.VISIBLE && focused != null && isInside(focused, toolbar)
+
+        // Selection hidden: the first arrow / OK press just shows which camera is selected, so
+        // OK never opens a camera you couldn't see was picked.
+        val wasHidden = !navigating
+        keepNavigating()
+        if (wasHidden && moving == null && focused is CameraTile && k in REVEAL_KEYS) return true
 
         moving?.let {
             when (k) {
@@ -395,5 +420,13 @@ class GridActivity : Activity() {
             }
         }
         return super.dispatchKeyEvent(e)
+    }
+
+    companion object {
+        /** How long the selection border and numbers stay up after the last key press. */
+        const val NAV_IDLE_MS = 5_000L
+        private val REVEAL_KEYS = setOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER)
     }
 }

@@ -88,7 +88,8 @@ class CamerasActivity : Activity() {
                 6 -> testCamera(c) { build() }
                 7 -> ask("New IP address for ${c.name}", c.ip, Kind.IP) { ip ->
                     if (Regex("""\d{1,3}(\.\d{1,3}){3}""").matches(ip) && Store.cams.none { it !== c && it.ip == ip }) {
-                        c.ip = ip; Store.save(); focusIp = ip; testCamera(c) { build() }
+                        // Pointing it at an address by hand: forget the old identity, the new one is learned on connect.
+                        c.ip = ip; c.key = ""; c.mac = ""; Store.save(); focusIp = ip; testCamera(c) { build() }
                     } else toast("Invalid or already used")
                 }
                 8 -> confirm("Remove ${c.name}?", "A later scan will find it again if it's still on the network. To keep it out of the grid, hide it instead.", "Remove") {

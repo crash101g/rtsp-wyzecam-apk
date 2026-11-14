@@ -25,7 +25,12 @@ object Tls {
         SSLContext.getInstance("TLS").apply { init(null, arrayOf(trustAll), SecureRandom()) }.socketFactory
     }
 
-    fun connect(host: String, port: Int, timeoutMs: Int): SSLSocket {
+    /**
+     * Opens a TLS connection. If [expectKey] is set (a [key] seen before), the camera must present
+     * that same key, otherwise [WrongCameraException] is thrown: after DHCP hands out addresses
+     * again, an old IP may now belong to a different camera.
+     */
+    fun connect(host: String, port: Int, timeoutMs: Int, expectKey: String = ""): SSLSocket {
         val raw = Socket()
         try {
             raw.connect(InetSocketAddress(host, port), timeoutMs)
@@ -33,13 +38,30 @@ object Tls {
             raw.tcpNoDelay = true
             val s = factory.createSocket(raw, host, port, true) as SSLSocket
             s.startHandshake()
+            if (expectKey.isNotEmpty() && key(s) != expectKey) {
+                runCatching { s.close() }
+                throw WrongCameraException()
+            }
             return s
         } catch (e: Exception) {
             runCatching { raw.close() }
             throw e
         }
     }
+
+    /**
+     * A camera's identity: SHA-256 of the public key in its TLS certificate. Each Wyze cam makes
+     * its own key pair, so this tells cameras apart and survives IP changes. (Android 10+ doesn't
+     * let apps read the ARP table, so the MAC address usually isn't available.)
+     */
+    fun key(s: SSLSocket): String = runCatching {
+        val cert = s.session.peerCertificates.first()
+        MessageDigest.getInstance("SHA-256").digest(cert.publicKey.encoded).joinToString("") { "%02x".format(it) }
+    }.getOrDefault("")
 }
+
+class WrongCameraException : IOException(WRONG_CAMERA)
+const val WRONG_CAMERA = "a different camera is now at this IP address"
 
 /** An RTSP message on the wire: either a text request/response or an interleaved '$' data frame. */
 sealed class RtspMsg {
@@ -184,7 +206,8 @@ class RtspAuth(private val user: String, private val pass: String) {
 }
 
 /** Result of checking one camera with a real login (used by the scanner and "Test login"). */
-data class ProbeResult(val ok: Boolean, val error: String = "", val codec: String = "", val server: String = "")
+data class ProbeResult(val ok: Boolean, val error: String = "", val codec: String = "", val server: String = "",
+                       val key: String = "")
 
 object RtspProbe {
     /** Unauthenticated OPTIONS: does this host speak RTSPS at all? Returns the Server header or null. */
@@ -199,8 +222,15 @@ object RtspProbe {
     } catch (e: Exception) { null }
 
     /** DESCRIBE with the login: proves the stream exists and the username/password work. */
-    fun describe(ip: String, port: Int, path: String, user: String, pass: String, timeoutMs: Int = 8000): ProbeResult = try {
+    fun describe(ip: String, port: Int, path: String, user: String, pass: String, timeoutMs: Int = 8000): ProbeResult {
+        var key = ""
+        return describe(ip, port, path, user, pass, timeoutMs) { key = it }.copy(key = key)
+    }
+
+    private fun describe(ip: String, port: Int, path: String, user: String, pass: String, timeoutMs: Int,
+                         onKey: (String) -> Unit): ProbeResult = try {
         Tls.connect(ip, port, timeoutMs).use { s ->
+            onKey(Tls.key(s))
             val input = s.inputStream.buffered()
             val out = s.outputStream
             val uri = "rtsps://$ip:$port/$path"

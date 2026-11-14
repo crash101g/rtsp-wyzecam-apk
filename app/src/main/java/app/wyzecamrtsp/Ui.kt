@@ -161,14 +161,18 @@ fun Activity.runScan(onDone: () -> Unit = {}) {
 fun Activity.testCamera(cam: Cam, onDone: () -> Unit = {}) {
     val d = dialog().setTitle("Testing ${cam.name}").setMessage("Connecting to ${cam.ip}…").show()
     thread(isDaemon = true) {
-        val r = RtspProbe.describe(cam.ip, cam.port, Store.streamFor(cam, true), Store.user, Store.pass)
+        val r = RtspProbe.describe(cam.ip, cam.port, Store.streamFor(cam, true), Store.user, Store.pass).let {
+            if (cam.key.isNotEmpty() && it.key.isNotEmpty() && it.key != cam.key)
+                ProbeResult(false, "$WRONG_CAMERA — run Scan network to find this camera's new address") else it
+        }
         cam.ok = r.ok; cam.error = r.error
         if (r.codec.isNotEmpty()) cam.codec = r.codec
+        if (cam.key.isEmpty() && r.key.isNotEmpty() && Store.cams.none { it !== cam && it.key == r.key }) cam.key = r.key
         Store.save()
         runOnUiThread {
             runCatching { d.dismiss() }
             if (!isFinishing) message(cam.name,
-                if (r.ok) "Working ✓\n\n${cam.ip}:${cam.port}  ${r.codec}\n${r.server}".trim() else "Not working:\n${r.error}") { onDone() }
+                if (r.ok) "Working ✓\n\n${cam.ip}:${cam.port}  ${r.codec}\n${r.server}\n${cam.idText()}".trim() else "Not working:\n${r.error}") { onDone() }
         }
     }
 }
@@ -182,4 +186,11 @@ fun Context.column() = LinearLayout(this).apply {
 
 fun View.onKey(code: Int, action: () -> Unit) = setOnKeyListener { _, k, e ->
     if (k == code && e.action == KeyEvent.ACTION_DOWN) { action(); true } else false
+}
+
+/** "MAC 80:48:2c:…" or "ID c5267cd1e70e" (start of the TLS key), for showing which camera this is. */
+fun Cam.idText() = when {
+    mac.isNotEmpty() -> "MAC $mac"
+    key.isNotEmpty() -> "Camera ID ${key.take(12)}"
+    else -> ""
 }

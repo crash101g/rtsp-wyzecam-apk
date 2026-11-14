@@ -163,4 +163,25 @@ class QuirkyCameraTest {
         assertFalse(Sdp.fix(sdp, null, keepAudio = false).contains("m=audio"))
         assertTrue(Sdp.hasUsableSprop(Sdp.h264Track(sdp)!!))
     }
+
+    @Test fun rtpParserHandlesAnnexBInsidePayloads() {
+        fun pkt(payload: ByteArray) = byteArrayOf('$'.code.toByte(), 0, 0, 0) +
+            byteArrayOf(0x80.toByte(), 96, 0, 1, 0, 0, 0, 1, 0, 0, 0, 7) + payload
+        val sc = byteArrayOf(0, 0, 0, 1)
+        // Whole access unit with start codes in one "single NAL" packet.
+        val a = RtpH264(); a.add(pkt(sc + sps + sc + pps + sc + byteArrayOf(0x65, 1, 2)), 4)
+        assertTrue(a.summary, a.sps.contentEquals(sps) && a.pps.contentEquals(pps))
+        // SPS NAL with the PPS glued on behind a 3-byte start code.
+        val b = RtpH264(); b.add(pkt(sps + byteArrayOf(0, 0, 1) + pps), 4)
+        assertTrue(b.summary, b.sps.contentEquals(sps) && b.pps.contentEquals(pps))
+        // FU-A whose reassembled payload carries start codes.
+        val c = RtpH264()
+        val body = sps + sc + pps
+        c.add(pkt(byteArrayOf(0x7C, (0x80 or 7).toByte()) + body.copyOfRange(1, 5)), 4)
+        c.add(pkt(byteArrayOf(0x7C, (0x40 or 7).toByte()) + body.copyOfRange(5, body.size)), 4)
+        assertTrue(c.summary, c.sps.contentEquals(sps) && c.pps.contentEquals(pps))
+        // sprop with the start code base64-encoded too.
+        val enc = Base64.getEncoder()
+        assertTrue(H264Params.fromSprop(enc.encodeToString(sc + sps) + "," + enc.encodeToString(sc + pps)) != null)
+    }
 }
