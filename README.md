@@ -7,6 +7,10 @@ over your home network, with no cloud and no Wyze account.
 **Install:** [download `wyzecam-rtsp-tv.apk`](https://github.com/crash101g/rtsp-wyzecam-apk/releases/latest/download/wyzecam-rtsp-tv.apk)
 (always the newest version; release notes are on the [latest release](https://github.com/crash101g/rtsp-wyzecam-apk/releases/latest) page).
 
+## Tested devices
+- Walmart onn 4K Pro Streaming Device Gen2 (Google TV with Gemini, 32GB storage, 3GB RAM)
+- TCL 40Q3K (Google TV)
+
 ## Install on the TV
 1. On the TV: Settings → System → About → click *Android TV OS build* 7 times (developer mode),
    then Settings → System → Developer options → turn on **USB debugging** (some TVs call it *ADB debugging*).
